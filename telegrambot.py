@@ -421,7 +421,7 @@ def _load_persisted_message_state() -> Dict[int, Dict[str, Any]]:
         restored[user_id] = {
             "active_bet_messages": messages,
             "active_bet_snapshots": snapshots,
-            "lang": _normalize_lang(state.get("lang", "hu")),
+            "lang": _normalize_lang(state.get("lang", RUNTIME_LANG)),
         }
     return restored
 
