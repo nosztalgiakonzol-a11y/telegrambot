@@ -391,12 +391,12 @@ def _persist_last_bet_snapshots(snapshot_map: Dict[str, str]) -> None:
     _safe_write_json(BETS_SNAPSHOT_FILE, snapshot_map)
 
 
-def _load_persisted_message_state() -> Dict[int, Dict[str, Dict[str, Any]]]:
+def _load_persisted_message_state() -> Dict[int, Dict[str, Any]]:
     raw = _safe_read_json(MESSAGE_STATE_FILE, {})
     if not isinstance(raw, dict):
         return {}
 
-    restored: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    restored: Dict[int, Dict[str, Any]] = {}
     for raw_user_id, state in raw.items():
         if not isinstance(state, dict):
             continue
@@ -421,6 +421,7 @@ def _load_persisted_message_state() -> Dict[int, Dict[str, Dict[str, Any]]]:
         restored[user_id] = {
             "active_bet_messages": messages,
             "active_bet_snapshots": snapshots,
+            "lang": _normalize_lang(state.get("lang", "hu")),
         }
     return restored
 
@@ -439,11 +440,12 @@ def _persist_message_state(force: bool = False) -> None:
         if now_ts - LAST_MESSAGE_STATE_FLUSH_TS < MESSAGE_STATE_FLUSH_INTERVAL_SECONDS:
             return
 
-    payload: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    payload: Dict[str, Dict[str, Any]] = {}
     for user_id, session in USER_SESSIONS.items():
         payload[str(user_id)] = {
             "active_bet_messages": dict(session.get("active_bet_messages", {})),
             "active_bet_snapshots": dict(session.get("active_bet_snapshots", {})),
+            "lang": _session_lang(session),
         }
     _safe_write_json(MESSAGE_STATE_FILE, payload)
     MESSAGE_STATE_DIRTY = False
@@ -561,7 +563,7 @@ def get_session(user_id: int) -> Dict[str, object]:
             "active_bet_messages": dict(persisted.get("active_bet_messages", {})),
             "active_bet_snapshots": dict(persisted.get("active_bet_snapshots", {})),
             "no_bets_notice_sent": False,
-            "lang": RUNTIME_LANG,
+            "lang": _normalize_lang(persisted.get("lang", RUNTIME_LANG)),
         }
     return USER_SESSIONS[user_id]
 
@@ -1472,9 +1474,13 @@ def _send_startup_restart_notice_sync() -> None:
     if not user_ids:
         return
 
-    message_text = "Ahhoz, hogy újra kapj fogadásokat, kérlek írd be: /start" if RUNTIME_LANG != "rs" else "Da bi ponovo primao opklade, pošalji: /start"
-
     for chat_id in user_ids:
+        persisted_state = PERSISTED_MESSAGE_STATE.get(chat_id, {})
+        message_text = (
+            "Ahhoz, hogy újra kapj fogadásokat, kérlek írd be: /start"
+            if _session_lang(persisted_state) != "rs"
+            else "Da bi ponovo primao opklade, pošalji: /start"
+        )
         payload = urllib_parse.urlencode({
             "chat_id": str(chat_id),
             "text": message_text,
